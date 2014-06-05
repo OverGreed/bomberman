@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Lesson 1</title>
+		<script id="shader-fs" type="x-shader/x-fragment">
+			precision mediump float;
+			varying vec4 v_Color;
+			void main(void) {
+				gl_FragColor = v_Color;//vec4(1.0,1.0,1.0,1.0);//
+			}
+		</script>
+
+		<script id="shader-vs" type="x-shader/x-vertex">
+			attribute vec3 a_Vertex;
+			attribute vec4 a_Color;
+			
+			varying vec4 v_Color;
+
+			uniform mat4 u_mvMatrix;
+			uniform mat4 u_pMatrix;
+
+			void main(void) {
+				v_Color = a_Color;
+				gl_Position = u_pMatrix * u_mvMatrix * vec4(a_Vertex, 1.0);
+			}
+		</script>
+
+        <script type="text/javascript" src="../js/gl-matrix.js"></script>
+        <script type="text/javascript">
+			var gl;
+			var mvMatrix = mat4.create();
+			var pMatrix = mat4.create();
+			
+			function initGL(canvas) {
+				try {
+					gl = canvas.getContext("experimental-webgl");
+					gl.viewportWidth = canvas.width;
+					gl.viewportHeight = canvas.height;
+				} catch(e) {
+					
+				}
+				if(!gl) {
+					alert("Could not initialise WebGL.");
+				}
+			}
+
+			function getShader(gl, id){
+				var el = document.getElementById(id);
+				if(!el){
+					return null;
+				}
+				
+				var shader;
+
+				if(el.type=="x-shader/x-fragment"){
+					shader = gl.createShader(gl.FRAGMENT_SHADER);
+				} else if(el.type=="x-shader/x-vertex") {
+					shader = gl.createShader(gl.VERTEX_SHADER);
+				} else {
+					return null;
+				}
+				gl.shaderSource(shader, el.text);
+				gl.compileShader(shader);
+				if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+	
+					console.log(gl.getShaderInfoLog(shader));
+					return null;
+				}
+                
+				return shader;
+			}
+
+			var shaderProgram;
+			function initShaders(){
+				
+				var fragmentShader = getShader(gl, "shader-fs");
+				var vertexShader = getShader(gl, "shader-vs");
+				
+				shaderProgram = gl.createProgram();
+				gl.attachShader(shaderProgram, vertexShader);
+				gl.attachShader(shaderProgram, fragmentShader);
+				gl.linkProgram(shaderProgram);
+				
+				if(!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+					alert("Could not init shaders.");
+				}
+				gl.useProgram(shaderProgram);
+				shaderProgram.vertexAttribute = gl.getAttribLocation(shaderProgram, 'a_Vertex');
+				gl.enableVertexAttribArray(shaderProgram.vertexAttribute);
+				
+				shaderProgram.colorAttribute = gl.getAttribLocation(shaderProgram, 'a_Color');
+				gl.enableVertexAttribArray(shaderProgram.colorAttribute);
+				
+				shaderProgram.pMatrix = gl.getUniformLocation(shaderProgram, "u_pMatrix");
+				shaderProgram.mvMatrix = gl.getUniformLocation(shaderProgram, "u_mvMatrix");
+				
+			}
+			
+			var triangleBuffer;
+			var squareBuffer;
+			function initBuffers(){
+				triangleBuffer = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, triangleBuffer);
+				
+				var vertices = [
+					 0.0,  1.0, 0.0,    1.0, 0.0, 0.0,
+					-1.0, -1.0, 0.0,    0.0, 1.0, 0.0,
+					 1.0, -1.0, 0.0,    0.0, 0.0, 1.0
+				];
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+				triangleBuffer.itemSize = 3;
+				triangleBuffer.numItems = 3;
+				
+				squareBuffer = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, squareBuffer);
+				vertices = [
+					 1.0,  1.0,  0.0, 0.8, 0.8, 0.8,
+					-1.0,  1.0,  0.0, 0.5, 0.5, 0.5,
+					 1.0, -1.0,  0.0, 1.0, 1.0, 1.0,
+					-1.0, -1.0,  0.0, 1.0, 1.0, 1.0,
+				];
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+				squareBuffer.itemSize = 3;
+				squareBuffer.numItems = 4;
+			}
+			
+			function drawScene() {
+				gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+				gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+				mat4.perspective(pMatrix, 45*Math.PI/180, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+				mat4.identity(mvMatrix);
+				
+				mat4.translate(mvMatrix, mvMatrix, [-1.5, 0.0, -7.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER, triangleBuffer);
+				var stride = (3+3)*4;
+				gl.vertexAttribPointer(shaderProgram.vertexAttribute, triangleBuffer.itemSize, gl.FLOAT, false, stride, 0);
+				gl.vertexAttribPointer(shaderProgram.colorAttribute, triangleBuffer.itemSize, gl.FLOAT, false, stride, 3*4);
+				setMatrixUniforms();
+				gl.drawArrays(gl.TRIANGLES, 0, triangleBuffer.numItems);
+
+				mat4.translate(mvMatrix, mvMatrix, [3.0, 0.0, 0.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER, squareBuffer);
+				gl.vertexAttribPointer(shaderProgram.vertexAttribute, squareBuffer.itemSize, gl.FLOAT, false, stride, 0);
+				gl.vertexAttribPointer(shaderProgram.colorAttribute, squareBuffer.itemSize, gl.FLOAT, false, stride, 3*4);
+
+				setMatrixUniforms();
+				gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareBuffer.numItems);
+                window.requestAnimationFrame(drawScene);
+
+			}
+			
+			function setMatrixUniforms() {
+				gl.uniformMatrix4fv(shaderProgram.pMatrix, false, pMatrix);
+				gl.uniformMatrix4fv(shaderProgram.mvMatrix, false, mvMatrix);
+			}
+			
+            function startApp(){
+                var canvas = document.getElementById('canvas-context');
+                
+                initGL(canvas);
+                initShaders();
+                initBuffers();
+                
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+              //  gl.enable(gl.DEPTH_TEST);
+                
+                drawScene();
+            }
+        </script>
+    </head>
+    <body onload="startApp();">
+        <canvas id="canvas-context" style="border:none;" width="500" height="500"></canvas>
+    </body>
+</html>
